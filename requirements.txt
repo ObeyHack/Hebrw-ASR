@@ -1,13 +1,13 @@
-numpy==1.26.4
+numpy==1.26.3
 tqdm
-librosa~=0.10.2.post1
+librosa
 lightning
-jupyter
+Jupyter
 neptune
 wandb
 python-dotenv
 datasets
---index-url https://download.pytorch.org/whl/cu121
+--extra-index-url https://download.pytorch.org/whl/cu121
 torch
 torchvision
 torchaudio
