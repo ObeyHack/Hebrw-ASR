@@ -1,0 +1,10 @@
+/.venv/
+/.idea/
+/.env/
+/.ipynb_checkpoints/
+.DS_Store
+*.pyc
+/src/lightning_logs/
+/src/.neptune/
+/src/wandb/
+.env

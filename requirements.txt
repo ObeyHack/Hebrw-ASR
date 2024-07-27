@@ -1,0 +1,13 @@
+numpy==1.26.4
+tqdm
+librosa~=0.10.2.post1
+lightning
+jupyter
+neptune
+wandb
+python-dotenv
+datasets
+--index-url https://download.pytorch.org/whl/cu121
+torch
+torchvision
+torchaudio
