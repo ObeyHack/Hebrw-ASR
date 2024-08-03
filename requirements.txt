@@ -8,6 +8,7 @@ wandb
 python-dotenv
 datasets
 jiwer
+transformers
 --extra-index-url https://download.pytorch.org/whl/cu121
 torch
 torchvision
