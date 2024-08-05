@@ -1,5 +1,6 @@
 numpy==1.26.3
 tqdm
+matplotlib
 librosa
 lightning
 Jupyter
@@ -9,6 +10,9 @@ python-dotenv
 datasets
 jiwer
 transformers
+lightning-sdk
+litdata
+Dataset
 --extra-index-url https://download.pytorch.org/whl/cu121
 torch
 torchvision
