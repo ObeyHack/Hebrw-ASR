@@ -6,12 +6,13 @@ from io import StringIO
 from neptune.types import File
 import lightning as pl
 from dataModule import AudioDataModule, FEATURES, CLASSES
-from modules import bi_rnn, ctcDecoder
+from modules import bi_rnn, ctcDecoder, convolution
 from jiwer import wer
 from prep.processor import get_feature_extractor, get_tokenizer
 
 
 default_config = {
+    "decoder": "beam",
     "n_class": CLASSES,
     "n_feature": FEATURES,
     "batch_size": 32,
@@ -45,37 +46,47 @@ class HebrewASR(pl.LightningModule):
         self.test_targets = []
 
         # Decoder
-        self.ctc_decoder = ctcDecoder.GreedyCTCDecoder(tokenizer=get_tokenizer())
+        if config['decoder'] == 'greedy':
+            self.ctc_decoder = ctcDecoder.GreedyCTCDecoder(tokenizer=get_tokenizer())
+        elif config['decoder'] == 'beam':
+            self.ctc_decoder = ctcDecoder.BeamCTCDecoder(tokenizer=get_tokenizer())
 
         # Loss function
         self.loss = nn.CTCLoss()
 
         # Input size:  FxT where F is the number of MFCC features and T is the # of time steps
         # Output size: TxC where T is the number of time steps and C is the number of classes
-        self.linear_test = nn.Linear(in_features=self.n_feature, out_features=self.n_class)
+        
+
+        self.conv_layers = convolution.CNN(input_dim=self.n_feature)
 
         self.bi_rnns = nn.ModuleList()
+        rnn_output_size = self.n_hidden * 2
         for i in range(self.n_rnn_layers):
             if i == 0:
-                self.bi_rnns.append(bi_rnn.BiRNN(input_size=self.n_feature, hidden_state_dim=self.n_hidden, rnn_type='gru',
+                self.bi_rnns.append(bi_rnn.BiRNN(input_size=self.conv_layers.get_output_dim(), 
+                hidden_state_dim=self.n_hidden, rnn_type='gru',
                                                   bidirectional=True, dropout=self.dropout))
             else:
-                self.bi_rnns.append(bi_rnn.BiRNN(input_size=self.n_hidden*2, hidden_state_dim=self.n_hidden, rnn_type='gru',
+                self.bi_rnns.append(bi_rnn.BiRNN(input_size=rnn_output_size, hidden_state_dim=self.n_hidden, rnn_type='gru',
                                               bidirectional=True, dropout=self.dropout))
 
-        self.linear_final = nn.Linear(in_features=self.n_hidden*2, out_features=self.n_class)
+        self.linear_final = nn.Linear(in_features=rnn_output_size, out_features=self.n_class)
 
 
     def forward(self, x):
         """
         :param x: (N, F, T) where N is the batch size, T is the number of time steps and F is the number of features
-        :return:    The predicted values, shape (T, N, C) where T is TimeSteps, N is the batch size and
-                    C is the number of classes.
-                    In total, they are N matrices of TxC shape, one for each time step a probability distribution
-                    over the classes
+        :return:  The predicted values, shape (T, N, C) where T is TimeSteps, N is the batch size and
+                C is the number of classes.
+                In total, they are N matrices of TxC shape, one for each time step a probability distribution
+                over the classes
         """
 
         # (N, F, T) 
+        x = self.conv_layers(x)
+
+
         for rnn in self.bi_rnns:
             x = rnn(x)
 
@@ -127,7 +138,7 @@ class HebrewASR(pl.LightningModule):
         # The input length is number of acutal time steps
         # run along batch axis
         # input is the time steps
-        input_lengths =  torch.full(size=(batch_size,), fill_value=y_hat.shape[0], dtype=torch.long)
+        input_lengths = torch.full(size=(batch_size,), fill_value=y_hat.shape[0], dtype=torch.long)
         return self.loss(y_hat, y, input_lengths, label_length)
     
     def wer(self, y_hat_str, y_str):
@@ -151,10 +162,7 @@ class HebrewASR(pl.LightningModule):
         :return: decoded values - (N,) strings
         """
         decoded_y = [self.ctc_decoder.decode(encdoing) for encdoing in y]
-        decoded_y_hat = []
-        for i in range(y_hat.shape[1]):
-            logits = y_hat[:, i, :]
-            decoded_y_hat.append(self.ctc_decoder(logits))
+        decoded_y_hat = self.ctc_decoder(y_hat)
         return decoded_y_hat, decoded_y
 
     def training_step(self, batch, batch_idx):
@@ -185,13 +193,16 @@ class HebrewASR(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self(x)
-        loss = self.calc_loss(y_hat, y)
+
+        loss = self.calc_loss(y_hat, y) 
+
         decoded_y_hat, decoded_y = self.decode(y_hat, y)
-        wer = self.wer(y_hat, y)
+        wer = self.wer(decoded_y_hat, decoded_y)
 
         self.test_loss.append(loss)
-        self.test_wer.append(acc)
+        self.test_wer.append(wer)
 
+        print(decoded_y_hat)
 
         self.test_predictions.extend(decoded_y_hat)
         self.test_targets.extend(decoded_y)
@@ -219,7 +230,7 @@ class HebrewASR(pl.LightningModule):
         df = pd.DataFrame({"predictions": self.test_predictions, "targets": self.test_targets})
         csv_buffer = StringIO()
         df.to_csv(csv_buffer, index=False)
-        self.logger.experiment[f"data/testd_l_epoch_{self.current_epoch}"].upload(File.from_stream(csv_buffer, extension="csv"))
+        self.logger.experiment[f"data/test_epoch_{self.current_epoch}"].upload(File.from_stream(csv_buffer, extension="csv"))
         self.test_loss.clear()
         self.test_wer.clear()
         self.test_predictions.clear()
@@ -229,7 +240,7 @@ class HebrewASR(pl.LightningModule):
         return torch.optim.Adam(self.parameters(), lr=self.lr)
 
 
-def train_func(config=None, logger=None, logger_config=None, num_epochs=10):
+def train_func(config=default_config, logger=None, logger_config=None, num_epochs=10):
     if config is None:
         config = default_config
 
@@ -256,8 +267,23 @@ def train_func(config=None, logger=None, logger_config=None, num_epochs=10):
 
 
 def main():
-    train_func()
+    from lightning.pytorch.loggers import NeptuneLogger
+    from dotenv import load_dotenv
+    import os
+
+    API_TOKEN = os.environ.get("LOGGER_API")
+    PROJECT_NAME = 'mrobay/Audio-project'
+
+    logger_config = {
+        "api_key": API_TOKEN,
+        "project_name": PROJECT_NAME,
+        "log_model_checkpoints": False
+    }
+
+    neptune_logger = NeptuneLogger(project=PROJECT_NAME, api_key=API_TOKEN, log_model_checkpoints=True)
+    train_func(logger=neptune_logger)
 
 
 if __name__ == '__main__':
     main()
+    

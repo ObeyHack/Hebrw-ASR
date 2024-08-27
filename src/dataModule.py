@@ -33,11 +33,11 @@ class AudioDataModule(pl.LightningDataModule):
         if stage == "fit":
             self.train_loader = StreamingDataLoader(SpeechStreamingDataset(input_dir=f"{self.data_dir}/train/YV"),
                                                     batch_size=self.batch_size, shuffle=True, num_workers=os.cpu_count(),
-                                                     persistent_workers=True, pin_memory=False)
+                                                     persistent_workers=True, pin_memory=True)
             self._already_called["fit"] = True
             self.val_loader = StreamingDataLoader(SpeechStreamingDataset(input_dir=f"{self.data_dir}/val"),
                                                     batch_size=self.batch_size, shuffle=False, num_workers=os.cpu_count(),
-                                                     persistent_workers=True, pin_memory=False)
+                                                     persistent_workers=True, pin_memory=True)
 
             self._already_called["validate"] = True
             
@@ -45,13 +45,13 @@ class AudioDataModule(pl.LightningDataModule):
         if stage == "validate" and not self._already_called["validate"]:
             self.val_loader = StreamingDataLoader(SpeechStreamingDataset(input_dir=f"{self.data_dir}/val"),
                                                     batch_size=self.batch_size, shuffle=False, num_workers=os.cpu_count(),
-                                                        persistent_workers=True, pin_memory=False)
+                                                        persistent_workers=True, pin_memory=True)
             self._already_called["validate"] = True
 
         if stage == "test":
             self.test_loader = StreamingDataLoader(SpeechStreamingDataset(input_dir=f"{self.data_dir}/test"),
                                                     batch_size=self.batch_size, shuffle=False, num_workers=os.cpu_count(),
-                                                    persistent_workers=True, pin_memory=False)
+                                                    persistent_workers=True, pin_memory=True)
             self._already_called["test"] = True
 
     def train_dataloader(self):

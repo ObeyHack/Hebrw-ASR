@@ -57,6 +57,8 @@ class BiRNN(nn.Module):
         # (N, T, H)
         x = self.batch_norm(x)
 
+        x = F.relu(x)
+
         # (N, T, H)
         x = Tensor.transpose(x, 1, 2)
 
