@@ -72,10 +72,10 @@ class BeamCTCDecoder(CTCDecoder):
     LM_WEIGHT = 3.23
     WORD_SCORE = -0.26
     self.beam_search_decoder = ctc_decoder(
-      lexicon="model.lexicon",
+      lexicon=None,
       tokens=self.tokens,
       lm="model.bin.lm",
-      nbest=3,
+      nbest=1,
       beam_size=5,
       lm_weight=LM_WEIGHT,
       word_score=WORD_SCORE,)
@@ -88,14 +88,14 @@ class BeamCTCDecoder(CTCDecoder):
 
     beam_search_transcripts = []
 
-    # for result in beam_search_result:
-    #   tokens_str = "".join(self.beam_search_decoder.idxs_to_tokens(result[0].tokens))
-    #   transcript = " ".join(tokens_str.split("|"))
-    #   beam_search_transcripts.append(transcript)
+    for result in beam_search_result:
+      tokens_str = "".join(self.beam_search_decoder.idxs_to_tokens(result[0].tokens))
+      transcript = " ".join(tokens_str.split("|"))
+      beam_search_transcripts.append(transcript)
 
-    beam_search_transcripts = [
-      " ".join(result[0].words).strip() for result in beam_search_result
-    ]
+    # beam_search_transcripts = [
+    #   " ".join(result[0].words).strip() for result in beam_search_result
+    # ]
 
     return beam_search_transcripts
 

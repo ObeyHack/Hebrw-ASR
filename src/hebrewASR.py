@@ -12,7 +12,7 @@ from prep.processor import get_feature_extractor, get_tokenizer, FEATURES
 
 
 default_config = {
-    "decoder": "beam",
+    "decoder": "greedy",
     "n_class": CLASSES,
     "n_feature": FEATURES,
     "batch_size": 1,
@@ -188,8 +188,6 @@ class HebrewASR(pl.LightningModule):
         self.test_loss.append(loss)
         self.test_wer.append(wer)
 
-        print(decoded_y_hat)
-
         self.test_predictions.extend(decoded_y_hat)
         self.test_targets.extend(decoded_y)
         return {"test_loss": loss, "test_wer": wer}
@@ -224,6 +222,21 @@ class HebrewASR(pl.LightningModule):
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.lr)
+
+
+    def transcribe(self, audio_bytes):
+        """
+        :param audio_bytes: The audio file in bytes
+        :return: The transcribed text
+        """
+        feature_extractor = get_feature_extractor()
+        tokenizer = get_tokenizer()
+        x = feature_extractor(audio_bytes, sampling_rate=16000).input_features[0].T
+        x = torch.tensor(x).unsqueeze(0)
+        y_hat = self(x)
+        decoded_y_hat = self.ctc_decoder(y_hat)
+        decoded_y_hat = decoded_y_hat[0]
+        return decoded_y_hat
 
 
 def train_func(config=default_config, logger=None, logger_config=None, num_epochs=10000):

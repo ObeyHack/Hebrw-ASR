@@ -57,8 +57,7 @@ def pre_process(dataset):
 
 def optimizer(dataset, output_dir):
     num_of_processes = os.cpu_count()
-    num_of_processes = 1
-    d = 1
+    d = 4
     datasets = [dataset.shard(d*num_of_processes, i) for i in range(d*num_of_processes)]
     optimize(
         fn=pre_process,
@@ -78,6 +77,7 @@ def main():
 
 
     dataset_train = load_dataset("ivrit-ai/audio-labeled",  cache_dir='datasets/train', split="train")
+    #output_dir_train = f"{output_root}/train/ivrit-ai"
     output_dir_train = f"preprocess/train/ivrit-ai"
     dataset_train = dataset_train.rename_column("orig_text", "normalized_text")
     optimizer(dataset_train, output_dir_train)
