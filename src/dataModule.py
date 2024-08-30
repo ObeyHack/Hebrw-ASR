@@ -1,10 +1,9 @@
 import lightning as pl
 from litdata import StreamingDataLoader, StreamingDataset
-from prep.processor import get_feature_extractor, get_tokenizer
+from prep.processor import get_feature_extractor, get_tokenizer, FEATURES
 import os
 
-CLASSES = get_tokenizer().vocab_size + 1 - 7 # 1 for epsilon, 7 for special tokens (pad, cls, sep, etc)
-FEATURES = 80
+CLASSES = get_tokenizer().vocab_size + 1 # 1 for epsilon
 BATCH_SIZE = 32
 
 class SpeechStreamingDataset(StreamingDataset):
@@ -31,11 +30,15 @@ class AudioDataModule(pl.LightningDataModule):
             return
 
         if stage == "fit":
-            self.train_loader = StreamingDataLoader(SpeechStreamingDataset(input_dir=f"{self.data_dir}/train/YV"),
-                                                    batch_size=self.batch_size, shuffle=True, num_workers=os.cpu_count(),
-                                                     persistent_workers=True, pin_memory=True)
+            # self.train_loader = StreamingDataLoader(SpeechStreamingDataset(input_dir=f"{self.data_dir}/train/YV"),
+            #                                         batch_size=self.batch_size, shuffle=True, num_workers=os.cpu_count(),
+            #                                          persistent_workers=True, pin_memory=True)
+
+            self.train_loader = StreamingDataLoader(SpeechStreamingDataset(input_dir=f"/teamspace/studios/this_studio/preprocess/train/ivrit-ai"),
+                                                     batch_size=self.batch_size, shuffle=True, num_workers=os.cpu_count(),
+                                                      persistent_workers=True, pin_memory=True)
             self._already_called["fit"] = True
-            self.val_loader = StreamingDataLoader(SpeechStreamingDataset(input_dir=f"{self.data_dir}/val"),
+            self.val_loader = StreamingDataLoader(SpeechStreamingDataset(input_dir=f"/teamspace/studios/this_studio/preprocess/train/ivrit-ai"),
                                                     batch_size=self.batch_size, shuffle=False, num_workers=os.cpu_count(),
                                                      persistent_workers=True, pin_memory=True)
 

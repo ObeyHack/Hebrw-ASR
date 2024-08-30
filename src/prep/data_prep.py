@@ -3,7 +3,7 @@ from litdata import optimize
 from datasets import Dataset, Audio, load_dataset, load_from_disk
 from functools import partial
 from datasets import disable_caching
-from processor import get_tokenizer, get_feature_extractor
+from processor import get_tokenizer, get_feature_extractor, FEATURES
 
 
 def is_text(text):
@@ -22,7 +22,8 @@ def tokenization(examples, tokenizer):
 
 def feature_extraction(example, feature_extractor):
     audio = example["audio"]
-    example["mfcc"] = feature_extractor(audio["array"], sampling_rate=audio["sampling_rate"]).input_features[0]
+    example["mfcc"] = (feature_extractor(audio["array"], sampling_rate=audio["sampling_rate"], 
+                                        ).input_features[0]).T
     return example
 
 
@@ -31,7 +32,7 @@ def pre_process(dataset):
     Pre-process the data
     """
 
-    # dataset = dataset.take(100)
+    dataset = dataset.take(2)
 
     # Filter out examples without text or audio
     dataset = dataset.filter(is_text, input_columns="normalized_text").filter(is_audio, input_columns="audio")
@@ -56,7 +57,8 @@ def pre_process(dataset):
 
 def optimizer(dataset, output_dir):
     num_of_processes = os.cpu_count()
-    d = 4
+    num_of_processes = 1
+    d = 1
     datasets = [dataset.shard(d*num_of_processes, i) for i in range(d*num_of_processes)]
     optimize(
         fn=pre_process,
@@ -70,8 +72,14 @@ def optimizer(dataset, output_dir):
 def main():
     output_root = "/teamspace/s3_connections/audio-speech-hebrew"
 
-    dataset_train = load_dataset("SLPRL-HUJI/HebDB", "YV_pre", cache_dir='datasets/train', split="train")
-    output_dir_train = f"{output_root}/train/YV"
+    #dataset_train = load_dataset("SLPRL-HUJI/HebDB", "YV_pre", cache_dir='datasets/train', split="train")
+    # output_dir_train = f"{output_root}/train/YV"
+    # optimizer(dataset_train, output_dir_train)
+
+
+    dataset_train = load_dataset("ivrit-ai/audio-labeled",  cache_dir='datasets/train', split="train")
+    output_dir_train = f"preprocess/train/ivrit-ai"
+    dataset_train = dataset_train.rename_column("orig_text", "normalized_text")
     optimizer(dataset_train, output_dir_train)
 
     # dataset_val = load_dataset("google/fleurs", "he_il", split="validation", cache_dir='datasets/val', trust_remote_code=True)

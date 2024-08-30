@@ -5,19 +5,19 @@ import pandas as pd
 from io import StringIO
 from neptune.types import File
 import lightning as pl
-from dataModule import AudioDataModule, FEATURES, CLASSES
+from dataModule import AudioDataModule, CLASSES
 from modules import bi_rnn, ctcDecoder, convolution
 from jiwer import wer
-from prep.processor import get_feature_extractor, get_tokenizer
+from prep.processor import get_feature_extractor, get_tokenizer, FEATURES
 
 
 default_config = {
     "decoder": "beam",
     "n_class": CLASSES,
     "n_feature": FEATURES,
-    "batch_size": 32,
+    "batch_size": 1,
     "lr": 1e-3,
-    "n_hidden": 128,
+    "n_hidden": 256,
     "n_rnn_layers": 5,
     "dropout": 0.1,
 }
@@ -52,12 +52,13 @@ class HebrewASR(pl.LightningModule):
             self.ctc_decoder = ctcDecoder.BeamCTCDecoder(tokenizer=get_tokenizer())
 
         # Loss function
-        self.loss = nn.CTCLoss()
+        self.loss = nn.CTCLoss(
+        zero_infinity=False,
+        )
 
         # Input size:  FxT where F is the number of MFCC features and T is the # of time steps
         # Output size: TxC where T is the number of time steps and C is the number of classes
-        
-
+    
         self.conv_layers = convolution.CNN(input_dim=self.n_feature)
 
         self.bi_rnns = nn.ModuleList()
@@ -82,7 +83,6 @@ class HebrewASR(pl.LightningModule):
                 In total, they are N matrices of TxC shape, one for each time step a probability distribution
                 over the classes
         """
-
         # (N, F, T) 
         x = self.conv_layers(x)
 
@@ -105,21 +105,7 @@ class HebrewASR(pl.LightningModule):
         return x
 
 
-    def input_lengths(self, x):
-        """
-        :param x: The input size (N, F, T)
-        """
-        input_lengths = []
-        for i in range(x.shape[0]):
-            mfcc = x[i, :, :]
-            mask = torch.all(mfcc == -1.5, axis=0)
-            mfcc_length = torch.sum(mask == 0)
-            input_lengths.append(mfcc_length)
-        input_lengths = torch.tensor(input_lengths, dtype=torch.long)
-        return input_lengths
-
-
-    def calc_loss(self, y_hat, y):
+    def calc_loss(self, y_hat, y, lengths=None):
         """
         :param y_hat: The predicted values, shape (T, N, C) where T is TimeSteps, N is the batch size and
                         C is the number of classes.
@@ -139,6 +125,7 @@ class HebrewASR(pl.LightningModule):
         # run along batch axis
         # input is the time steps
         input_lengths = torch.full(size=(batch_size,), fill_value=y_hat.shape[0], dtype=torch.long)
+
         return self.loss(y_hat, y, input_lengths, label_length)
     
     def wer(self, y_hat_str, y_str):
@@ -181,7 +168,6 @@ class HebrewASR(pl.LightningModule):
         loss = self.calc_loss(y_hat, y)
         decoded_y_hat, decoded_y = self.decode(y_hat, y)
         wer = self.wer(decoded_y_hat, decoded_y)
-
 
         self.eval_loss.append(loss)
         self.eval_wer.append(wer)
@@ -240,7 +226,7 @@ class HebrewASR(pl.LightningModule):
         return torch.optim.Adam(self.parameters(), lr=self.lr)
 
 
-def train_func(config=default_config, logger=None, logger_config=None, num_epochs=10):
+def train_func(config=default_config, logger=None, logger_config=None, num_epochs=10000):
     if config is None:
         config = default_config
 
@@ -259,6 +245,7 @@ def train_func(config=default_config, logger=None, logger_config=None, num_epoch
         accelerator="auto",
         logger=logger,
         max_epochs=num_epochs,
+        gradient_clip_val=0.5,
     )
     trainer.fit(model, datamodule=dm)
 

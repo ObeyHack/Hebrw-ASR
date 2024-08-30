@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
-
+import torch
 
 
 class BiRNN(nn.Module):
@@ -48,22 +48,31 @@ class BiRNN(nn.Module):
         )
 
 
-    def forward(self, x: Tensor):
+    def forward(self, x: Tensor, input_lengths: Tensor = None):
         """
         Args:
-            x (Tensor): input tensor (N, T, H)
+            x (Tensor): input tensor (N, H, T)
+            input_lengths (Tensor): tensor containing sequence lengths (N,)
         """
-
-        # (N, T, H)
-        x = self.batch_norm(x)
-
-        x = F.relu(x)
-
-        # (N, T, H)
-        x = Tensor.transpose(x, 1, 2)
+        total_length = x.size(2)
 
         # (N, H, T)
+        x = self.batch_norm(x)
+
+        # (N, H, T)
+        x = F.relu(x)
+
+        # (N, H, T)
+        x = Tensor.transpose(x, 1, 2)
+
+        # # (N, T, H)
+        # x = torch.nn.utils.rnn.pack_padded_sequence(x, lengths=input_lengths.cpu(), batch_first=True, enforce_sorted=False)
+
+        # (N, T, H)
         x, _ = self.rnn(x)
+
+        # # (N, T, H)
+        # x, _ = nn.utils.rnn.pad_packed_sequence(x, total_length=total_length, batch_first=True)
 
         # (N, T, H)
         x = Tensor.transpose(x, 1, 2)

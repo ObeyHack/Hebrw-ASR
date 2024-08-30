@@ -7,16 +7,31 @@ class CTCDecoder(torch.nn.Module):
   def __init__(self, tokenizer):
     super().__init__()
     self.tokenizer = tokenizer
-    self.skip_ids = 7
-    self.blank = tokenizer.vocab_size - self.skip_ids
+    self.blank = 0
+    self.skip_ids = 0 # for the blank token
     self.tokens =  list(tokenizer.get_vocab().keys())[self.skip_ids:] + ["-", '|'] + [f"{i}" for i in range(10)] + ["'", "־", '`']
 
+  def get_blank(self):
+    return self.blank
 
+  def input_lengths(self, x):
+    """
+    :param x: The input size (N, F, T)
+    """
+    input_lengths = []
+    for i in range(x.shape[0]):
+        mfcc = x[i, :, :]
+        mask = torch.all(mfcc == -1.5, axis=0)
+        mfcc_length = torch.sum(mask == 0)
+        input_lengths.append(mfcc_length)
+    input_lengths = torch.tensor(input_lengths, dtype=torch.long)
+    return input_lengths
+    
 
   def forward(self, emission: torch.Tensor) -> typing.List[str]:
     """Given a sequence emission over labels, get the best path
       Args:
-      emission (Tensor): Logit tensors. Shape `[num_seq, num_label]`.
+      emission (Tensor): Logit tensors. Shape (T, N, C)
 
       Returns:
       List[str]: The resulting transcript
@@ -35,17 +50,12 @@ class CTCDecoder(torch.nn.Module):
 class GreedyCTCDecoder(CTCDecoder):
   def forward(self, emission: torch.Tensor) -> typing.List[str]:
     def greedy_decode(emission: torch.Tensor) -> torch.Tensor:
-      """Given a sequence emission over labels, get the best path
-      Args:
-        emission (Tensor): Logit tensors. Shape `[num_seq, num_label]`.
-      Returns:
-        List[str]: The resulting transcript
-      """
       indices = torch.argmax(emission, dim=-1)
       indices = torch.unique_consecutive(indices, dim=-1)
       indices = [i for i in indices if i != self.blank]
       indices = [i + self.skip_ids for i in indices]
-      return indices
+      decode = self.decode(indices)
+      return decode
 
     decoded = []
     for i in range(emission.shape[1]):
@@ -65,24 +75,28 @@ class BeamCTCDecoder(CTCDecoder):
       lexicon="model.lexicon",
       tokens=self.tokens,
       lm="model.bin.lm",
-      nbest=1,
-      beam_size=1500,
+      nbest=3,
+      beam_size=5,
       lm_weight=LM_WEIGHT,
       word_score=WORD_SCORE,)
 
 
   def forward(self, emission: torch.Tensor) -> typing.List[str]:
-    """Given a sequence emission over labels, get the best path
-    Args:
-      emission (Tensor): Logit tensors. Shape `[num_seq, num_label]`.
-    Returns:
-      List[str]: The resulting transcript
-    """
     emission = torch.transpose(emission, 0, 1)
-    beam_search_result = self.beam_search_decoder(emission.contiguous())
+    lengths = self.input_lengths(emission)
+    beam_search_result = self.beam_search_decoder(emission.contiguous().cpu(), lengths.cpu())
+
+    beam_search_transcripts = []
+
+    # for result in beam_search_result:
+    #   tokens_str = "".join(self.beam_search_decoder.idxs_to_tokens(result[0].tokens))
+    #   transcript = " ".join(tokens_str.split("|"))
+    #   beam_search_transcripts.append(transcript)
+
     beam_search_transcripts = [
       " ".join(result[0].words).strip() for result in beam_search_result
     ]
+
     return beam_search_transcripts
 
 
