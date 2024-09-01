@@ -6,7 +6,8 @@ from io import StringIO
 from neptune.types import File
 import lightning as pl
 from dataModule import AudioDataModule, CLASSES
-from modules import bi_rnn, ctcDecoder, convolution
+from modules import bi_rnn, ctcDecoder, convolution, danse
+from modules.danse import LayerNorm, Danse
 from jiwer import wer
 from prep.processor import get_feature_extractor, get_tokenizer, FEATURES
 
@@ -15,7 +16,7 @@ default_config = {
     "decoder": "greedy",
     "n_class": CLASSES,
     "n_feature": FEATURES,
-    "batch_size": 1,
+    "batch_size": 2,
     "lr": 1e-3,
     "n_hidden": 256,
     "n_rnn_layers": 5,
@@ -50,6 +51,9 @@ class HebrewASR(pl.LightningModule):
             self.ctc_decoder = ctcDecoder.GreedyCTCDecoder(tokenizer=get_tokenizer())
         elif config['decoder'] == 'beam':
             self.ctc_decoder = ctcDecoder.BeamCTCDecoder(tokenizer=get_tokenizer())
+        self.decode_mode = config['decoder']
+
+
 
         # Loss function
         self.loss = nn.CTCLoss(
@@ -72,7 +76,14 @@ class HebrewASR(pl.LightningModule):
                 self.bi_rnns.append(bi_rnn.BiRNN(input_size=rnn_output_size, hidden_state_dim=self.n_hidden, rnn_type='gru',
                                               bidirectional=True, dropout=self.dropout))
 
-        self.linear_final = nn.Linear(in_features=rnn_output_size, out_features=self.n_class)
+
+        self.linear_final = nn.Sequential(
+            # LayerNorm(rnn_output_size),
+            # Danse(rnn_output_size, rnn_output_size, bias=True),
+            # nn.ReLU(),
+            LayerNorm(rnn_output_size),
+            Danse(rnn_output_size, self.n_class, bias=False)
+        )
 
 
     def forward(self, x):
@@ -105,28 +116,24 @@ class HebrewASR(pl.LightningModule):
         return x
 
 
-    def calc_loss(self, y_hat, y, lengths=None):
+    def calc_loss(self, y_hat, y, y_hat_len, y_len):
         """
         :param y_hat: The predicted values, shape (T, N, C) where T is TimeSteps, N is the batch size and
                         C is the number of classes.
                         In total, they are N matrices of TxC shape, one for each time step a probability distribution
                         over the classes
         :param y: The true values, shape (N, S) where N is the batch size and S is the length of the word.
+        :param y_hat_len: The length of the predicted values, shape (N,)
+        :param y_len: The length of the true values, shape (N,)
         :return: CTC loss.
         """
         batch_size = y_hat.shape[1]
-        # label_length is the length of the text label. In our case is the length of the word
-        # find where the padding starts
-        pad_idx = 4
-        un_padded_y = [token[token != pad_idx] for token in y]
-        label_length = torch.tensor([len(label) for label in un_padded_y]) * torch.ones(batch_size, dtype=torch.long)
-
         # The input length is number of acutal time steps
         # run along batch axis
         # input is the time steps
         input_lengths = torch.full(size=(batch_size,), fill_value=y_hat.shape[0], dtype=torch.long)
 
-        return self.loss(y_hat, y, input_lengths, label_length)
+        return self.loss(y_hat, y, input_lengths, y_len)
     
     def wer(self, y_hat_str, y_str):
         """
@@ -153,19 +160,19 @@ class HebrewASR(pl.LightningModule):
         return decoded_y_hat, decoded_y
 
     def training_step(self, batch, batch_idx):
-        x, y = batch
+        x, x_len, y, y_len = batch
         y_hat = self(x)
         # calculate the loss
-        loss = self.calc_loss(y_hat, y)
+        loss = self.calc_loss(y_hat, y, x_len, y_len)
 
         # log the loss
-        self.log_dict({'train_loss': loss.item()})
+        self.log_dict({'train_loss': loss.item()}, on_step=True, on_epoch=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        x, y = batch
+        x, x_len, y, y_len = batch
         y_hat = self(x)
-        loss = self.calc_loss(y_hat, y)
+        loss = self.calc_loss(y_hat, y, x_len, y_len)
         decoded_y_hat, decoded_y = self.decode(y_hat, y)
         wer = self.wer(decoded_y_hat, decoded_y)
 
@@ -174,13 +181,15 @@ class HebrewASR(pl.LightningModule):
 
         self.eval_predictions.extend(decoded_y_hat)
         self.eval_targets.extend(decoded_y)
+
         return {"val_loss": loss, "val_wer": wer}
 
     def test_step(self, batch, batch_idx):
-        x, y = batch
+        x, x_len, y, y_len = batch
+
         y_hat = self(x)
 
-        loss = self.calc_loss(y_hat, y) 
+        loss = self.calc_loss(y_hat, y, x_len, y_len)
 
         decoded_y_hat, decoded_y = self.decode(y_hat, y)
         wer = self.wer(decoded_y_hat, decoded_y)
@@ -190,6 +199,9 @@ class HebrewASR(pl.LightningModule):
 
         self.test_predictions.extend(decoded_y_hat)
         self.test_targets.extend(decoded_y)
+
+        self.log_dict({"test_loss": loss, "test_wer": wer}, on_step=True, on_epoch=False)
+
         return {"test_loss": loss, "test_wer": wer}
 
     def on_validation_epoch_end(self):
@@ -239,16 +251,20 @@ class HebrewASR(pl.LightningModule):
         return decoded_y_hat
 
 
-def train_func(config=default_config, logger=None, logger_config=None, num_epochs=10000):
+def train_func(config=None, logger=None, logger_config=None, dm=None, checkpoints=None, num_epochs=50):
     if config is None:
         config = default_config
 
-    dm = AudioDataModule(batch_size=config['batch_size'])
+    if dm is None:
+        dm = AudioDataModule(batch_size=config['batch_size'])
+
+    dm.prepare_data()
+    dm.setup("fit")
+
     if logger is None and logger_config is not None:
         logger = NeptuneLogger(**logger_config)
 
-
-    model = HebrewASR(config)    
+    model = HebrewASR(config)
 
     # log the hyperparameters and not the api key and project name
     logger.run["parameters"] = config
@@ -260,10 +276,40 @@ def train_func(config=default_config, logger=None, logger_config=None, num_epoch
         max_epochs=num_epochs,
         gradient_clip_val=0.5,
     )
-    trainer.fit(model, datamodule=dm)
+    trainer.fit(model, datamodule=dm, ckpt_path=checkpoints)
 
     logger.run.stop()
     return trainer
+
+
+
+def test_func(config=None, logger=None, logger_config=None, checkpoints=None):
+    if config is None:
+        config = default_config
+
+    dm = AudioDataModule(batch_size=config['batch_size'])
+    dm.prepare_data()
+    dm.setup("test")
+
+    if logger is None and logger_config is not None:
+        logger = NeptuneLogger(**logger_config)
+
+    model = HebrewASR(config)
+
+    # log the hyperparameters and not the api key and project name
+    logger.run["parameters"] = config
+
+    trainer = pl.Trainer(
+        devices="auto",
+        accelerator="auto",
+        logger=logger,
+        log_every_n_steps=1,
+    )
+    trainer.test(model, datamodule=dm, ckpt_path=checkpoints)
+
+    logger.run.stop()
+    return trainer
+
 
 
 def main():

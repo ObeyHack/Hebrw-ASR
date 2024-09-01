@@ -13,8 +13,14 @@ def init_model():
     Initialize the model.
     """
     # Load the model
-    from hebrewASR import HebrewASR
-    model = HebrewASR.load_from_checkpoint("/teamspace/studios/this_studio/.neptune/AUD1-223/AUD1-223/checkpoints/epoch=177-step=356.ckpt")
+    from hebrewASR import HebrewASR, default_config
+
+    config = default_config
+    config["batch_size"] = 1
+    config["decoder"] = "greedy"
+
+    model = HebrewASR.load_from_checkpoint("/teamspace/studios/this_studio/.neptune/AUD1-223/AUD1-223/checkpoints/epoch=177-step=356.ckpt",
+                                             config=config) 
     model.eval()
     return model
 

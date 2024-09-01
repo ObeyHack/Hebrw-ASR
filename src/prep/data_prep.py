@@ -5,7 +5,6 @@ from functools import partial
 from datasets import disable_caching
 from processor import get_tokenizer, get_feature_extractor, FEATURES
 
-
 def is_text(text):
     # Filter out examples without text (text is empty or None)
     return text is not None and len(text) > 0
@@ -17,13 +16,29 @@ def is_audio(audio):
 
 
 def tokenization(examples, tokenizer):
-    return tokenizer(examples["normalized_text"], padding="max_length")
+    tokenized =  tokenizer(examples["normalized_text"], 
+                        padding="max_length", 
+                        truncation=True,
+                        return_tensors="pt")
+
+    examples["text_encoded"] = tokenized["input_ids"]
+    examples["text_length"] = tokenized["attention_mask"].sum(dim=1, keepdim=True)
+    return examples
 
 
 def feature_extraction(example, feature_extractor):
     audio = example["audio"]
-    example["mfcc"] = (feature_extractor(audio["array"], sampling_rate=audio["sampling_rate"], 
-                                        ).input_features[0]).T
+    mfcc = feature_extractor(audio["array"], 
+                        sampling_rate=audio["sampling_rate"], 
+                        do_normalize=True,
+                        padding="max_length", 
+                        return_tensors="pt",                        
+                        # return_attention_mask = True,
+                        return_token_timestamps = True,
+                        )
+
+    example["mfcc"] = mfcc["input_features"].squeeze(0)
+    example["mfcc_length"] = mfcc["num_frames"]
     return example
 
 
@@ -31,8 +46,8 @@ def pre_process(dataset):
     """
     Pre-process the data
     """
-
-    dataset = dataset.take(2)
+    
+    dataset = dataset.take(8)
 
     # Filter out examples without text or audio
     dataset = dataset.filter(is_text, input_columns="normalized_text").filter(is_audio, input_columns="audio")
@@ -48,16 +63,23 @@ def pre_process(dataset):
     # Feature extraction - mfcc
     feature_extractor = get_feature_extractor()
     dataset = dataset.map(feature_extraction,  fn_kwargs={"feature_extractor": feature_extractor}, batched=False)
+    
+    # convert to torch tensors
+    dataset.set_format("torch")
 
-    dataset = dataset.with_format("torch")
     for item in dataset:
-        yield {"mfcc": item["mfcc"], "input_ids": item["input_ids"]}
+        yield {"mfcc": item["mfcc"],
+            "mfcc_length": item["mfcc_length"],
+            "text_encoded": item["text_encoded"],
+            "text_length": item["text_length"],
+        }
 
 
 
 def optimizer(dataset, output_dir):
     num_of_processes = os.cpu_count()
-    d = 4
+    num_of_processes = 1
+    d = 1
     datasets = [dataset.shard(d*num_of_processes, i) for i in range(d*num_of_processes)]
     optimize(
         fn=pre_process,
@@ -71,25 +93,26 @@ def optimizer(dataset, output_dir):
 def main():
     output_root = "/teamspace/s3_connections/audio-speech-hebrew"
 
-    #dataset_train = load_dataset("SLPRL-HUJI/HebDB", "YV_pre", cache_dir='datasets/train', split="train")
-    # output_dir_train = f"{output_root}/train/YV"
-    # optimizer(dataset_train, output_dir_train)
-
-
-    dataset_train = load_dataset("ivrit-ai/audio-labeled",  cache_dir='datasets/train', split="train")
-    #output_dir_train = f"{output_root}/train/ivrit-ai"
-    output_dir_train = f"preprocess/train/ivrit-ai"
-    dataset_train = dataset_train.rename_column("orig_text", "normalized_text")
+    dataset_train = load_dataset("SLPRL-HUJI/HebDB", "YV_pre", cache_dir='datasets/train', split="train")
+    output_dir_train = f"{output_root}/train/YV_norm"
+    output_dir_train = f"preprocess/train/YV"
     optimizer(dataset_train, output_dir_train)
+
+
+    # dataset_train = load_dataset("ivrit-ai/audio-labeled",  cache_dir='datasets/train', split="train")
+    # #output_dir_train = f"{output_root}/train/ivrit-ai"
+    # output_dir_train = f"preprocess/train/ivrit-ai"
+    # dataset_train = dataset_train.rename_column("orig_text", "normalized_text")
+    # optimizer(dataset_train, output_dir_train)
 
     # dataset_val = load_dataset("google/fleurs", "he_il", split="validation", cache_dir='datasets/val', trust_remote_code=True)
     # dataset_val = dataset_val.rename_column("transcription", "normalized_text")
-    # output_dir_val = f"{output_root}/val"
+    # output_dir_val = f"{output_root}/val/huji"
     # optimizer(dataset_val, output_dir_val)
     
     # dataset_test = load_dataset("google/fleurs", "he_il", split="test", cache_dir='datasets/test', trust_remote_code=True)
     # dataset_test = dataset_test.rename_column("transcription", "normalized_text")
-    # output_dir_train = f"{output_root}/test"
+    # output_dir_train = f"{output_root}/test/huji"
     # optimizer(dataset_test, output_dir_train)
 
 

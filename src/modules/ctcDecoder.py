@@ -13,21 +13,7 @@ class CTCDecoder(torch.nn.Module):
 
   def get_blank(self):
     return self.blank
-
-  def input_lengths(self, x):
-    """
-    :param x: The input size (N, F, T)
-    """
-    input_lengths = []
-    for i in range(x.shape[0]):
-        mfcc = x[i, :, :]
-        mask = torch.all(mfcc == -1.5, axis=0)
-        mfcc_length = torch.sum(mask == 0)
-        input_lengths.append(mfcc_length)
-    input_lengths = torch.tensor(input_lengths, dtype=torch.long)
-    return input_lengths
     
-
   def forward(self, emission: torch.Tensor) -> typing.List[str]:
     """Given a sequence emission over labels, get the best path
       Args:
