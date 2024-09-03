@@ -16,11 +16,11 @@ default_config = {
     "decoder": "greedy",
     "n_class": CLASSES,
     "n_feature": FEATURES,
-    "batch_size": 2,
-    "lr": 1e-3,
+    "batch_size": 16,
+    "lr": 9e-5,
     "n_hidden": 256,
-    "n_rnn_layers": 5,
-    "dropout": 0.1,
+    "n_rnn_layers": 8,
+    "dropout": 0.2,
 }
 
 
@@ -57,7 +57,8 @@ class HebrewASR(pl.LightningModule):
 
         # Loss function
         self.loss = nn.CTCLoss(
-        zero_infinity=False,
+        zero_infinity=True,
+        blank=self.ctc_decoder.get_blank(),
         )
 
         # Input size:  FxT where F is the number of MFCC features and T is the # of time steps
@@ -70,17 +71,22 @@ class HebrewASR(pl.LightningModule):
         for i in range(self.n_rnn_layers):
             if i == 0:
                 self.bi_rnns.append(bi_rnn.BiRNN(input_size=self.conv_layers.get_output_dim(), 
-                hidden_state_dim=self.n_hidden, rnn_type='gru',
-                                                  bidirectional=True, dropout=self.dropout))
+                                                hidden_state_dim=self.n_hidden, 
+                                                rnn_type='gru',
+                                                bidirectional=True,
+                                                dropout=self.dropout))
             else:
-                self.bi_rnns.append(bi_rnn.BiRNN(input_size=rnn_output_size, hidden_state_dim=self.n_hidden, rnn_type='gru',
-                                              bidirectional=True, dropout=self.dropout))
+                self.bi_rnns.append(bi_rnn.BiRNN(input_size=rnn_output_size, 
+                                                hidden_state_dim=self.n_hidden, 
+                                                rnn_type='gru',
+                                                bidirectional=True, 
+                                                dropout=self.dropout))
 
 
         self.linear_final = nn.Sequential(
-            # LayerNorm(rnn_output_size),
-            # Danse(rnn_output_size, rnn_output_size, bias=True),
-            # nn.ReLU(),
+            LayerNorm(rnn_output_size),
+            Danse(rnn_output_size, rnn_output_size, bias=True),
+            nn.ReLU(),
             LayerNorm(rnn_output_size),
             Danse(rnn_output_size, self.n_class, bias=False)
         )
@@ -97,22 +103,24 @@ class HebrewASR(pl.LightningModule):
         # (N, F, T) 
         x = self.conv_layers(x)
 
-
+        # (N, H, T/2) 
         for rnn in self.bi_rnns:
             x = rnn(x)
 
-        # (N, H, T)
+        # (N, H, T/2) 
         x = torch.transpose(x, 1, 2)
 
 
-        # (N, T, H)
+        # (N, T/2, H)
         x = self.linear_final(x)
 
-        # (N, T, C)
+        # (N, T/2, C)
         x = nn.functional.log_softmax(x, dim=2)
-        x = x.permute(1, 0, 2)
 
-        # (T, N, C)
+        # (N, T/2, C)
+        x = torch.transpose(x, 0, 1)
+
+        # (T/2, N, C)
         return x
 
 
@@ -326,7 +334,7 @@ def main():
         "log_model_checkpoints": False
     }
 
-    neptune_logger = NeptuneLogger(project=PROJECT_NAME, api_key=API_TOKEN, log_model_checkpoints=True)
+    neptune_logger = NeptuneLogger(project=PROJECT_NAME, api_key=API_TOKEN, log_model_checkpoints=False)
     train_func(logger=neptune_logger)
 
 

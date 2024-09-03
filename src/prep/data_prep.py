@@ -4,6 +4,8 @@ from datasets import Dataset, Audio, load_dataset, load_from_disk
 from functools import partial
 from datasets import disable_caching
 from processor import get_tokenizer, get_feature_extractor, FEATURES
+import speechpy
+import torch
 
 def is_text(text):
     # Filter out examples without text (text is empty or None)
@@ -28,10 +30,12 @@ def tokenization(examples, tokenizer):
 
 def feature_extraction(example, feature_extractor):
     audio = example["audio"]
+    fs = audio["sampling_rate"]
     mfcc = feature_extractor(audio["array"], 
                         sampling_rate=audio["sampling_rate"], 
                         do_normalize=True,
                         padding="max_length", 
+                        truncation=True,
                         return_tensors="pt",                        
                         # return_attention_mask = True,
                         return_token_timestamps = True,
@@ -46,8 +50,6 @@ def pre_process(dataset):
     """
     Pre-process the data
     """
-    
-    dataset = dataset.take(8)
 
     # Filter out examples without text or audio
     dataset = dataset.filter(is_text, input_columns="normalized_text").filter(is_audio, input_columns="audio")
@@ -78,8 +80,7 @@ def pre_process(dataset):
 
 def optimizer(dataset, output_dir):
     num_of_processes = os.cpu_count()
-    num_of_processes = 1
-    d = 1
+    d = 4
     datasets = [dataset.shard(d*num_of_processes, i) for i in range(d*num_of_processes)]
     optimize(
         fn=pre_process,
@@ -93,26 +94,26 @@ def optimizer(dataset, output_dir):
 def main():
     output_root = "/teamspace/s3_connections/audio-speech-hebrew"
 
-    dataset_train = load_dataset("SLPRL-HUJI/HebDB", "YV_pre", cache_dir='datasets/train', split="train")
-    output_dir_train = f"{output_root}/train/YV_norm"
-    output_dir_train = f"preprocess/train/YV"
-    optimizer(dataset_train, output_dir_train)
-
-
-    # dataset_train = load_dataset("ivrit-ai/audio-labeled",  cache_dir='datasets/train', split="train")
-    # #output_dir_train = f"{output_root}/train/ivrit-ai"
-    # output_dir_train = f"preprocess/train/ivrit-ai"
-    # dataset_train = dataset_train.rename_column("orig_text", "normalized_text")
+    # dataset_train = load_dataset("SLPRL-HUJI/HebDB", "YV_pre", cache_dir='datasets/train', split="train")
+    # output_dir_train = f"{output_root}/train/YV_norm"
     # optimizer(dataset_train, output_dir_train)
+
+
+    dataset_train = load_dataset("ivrit-ai/audio-labeled",  cache_dir='datasets/train', split="train")
+    #output_dir_train = f"{output_root}/train/ivrit-ai"
+    output_dir_train = f"preprocess/train/ivrit-ai"
+    dataset_train = dataset_train.rename_column("text", "normalized_text")
+    dataset_train = dataset_train.take(100)
+    optimizer(dataset_train, output_dir_train)
 
     # dataset_val = load_dataset("google/fleurs", "he_il", split="validation", cache_dir='datasets/val', trust_remote_code=True)
     # dataset_val = dataset_val.rename_column("transcription", "normalized_text")
-    # output_dir_val = f"{output_root}/val/huji"
+    # output_dir_val = f"{output_root}/val/"
     # optimizer(dataset_val, output_dir_val)
     
     # dataset_test = load_dataset("google/fleurs", "he_il", split="test", cache_dir='datasets/test', trust_remote_code=True)
     # dataset_test = dataset_test.rename_column("transcription", "normalized_text")
-    # output_dir_train = f"{output_root}/test/huji"
+    # output_dir_train = f"{output_root}/test/"
     # optimizer(dataset_test, output_dir_train)
 
 

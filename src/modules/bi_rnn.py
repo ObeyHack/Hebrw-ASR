@@ -5,23 +5,6 @@ import torch
 
 
 class BiRNN(nn.Module):
-    """
-    Recurrent neural network with batch normalization layer & ReLU activation function.
-
-    Args:
-        input_size (int): size of input
-        hidden_state_dim (int): the number of features in the hidden state `h`
-        rnn_type (str, optional): type of RNN cell (default: gru)
-        bidirectional (bool, optional): if True, becomes a bidirectional encoder (defulat: True)
-        dropout_p (float, optional): dropout probability (default: 0.1)
-
-    Inputs: inputs, input_lengths
-        - **inputs** (batch, time, dim): Tensor containing input vectors
-        - **input_lengths**: Tensor containing containing sequence lengths
-
-    Returns: outputs
-        - **outputs**: Tensor produced by the BNReluRNN module
-    """
     supported_rnns = {
         'lstm': nn.LSTM,
         'gru': nn.GRU,
@@ -29,7 +12,7 @@ class BiRNN(nn.Module):
 
     def __init__(self,
             input_size: int,
-            hidden_state_dim: int = 512,
+            hidden_state_dim: int = 256,
             rnn_type: str = 'gru',
             bidirectional: bool = True,
             dropout: float = 0.1,):
