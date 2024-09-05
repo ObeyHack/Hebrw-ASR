@@ -5,7 +5,7 @@ import os
 import torch
 
 
-CLASSES = get_tokenizer().vocab_size + 1 # 1 for epsilon
+CLASSES = get_tokenizer().vocab_size + 1 # 1 for epsilon, 7 for special tokens
 BATCH_SIZE = 32
 
 class SpeechStreamingDataset(StreamingDataset):
@@ -20,7 +20,7 @@ class SpeechStreamingDataset(StreamingDataset):
 
 class AudioDataModule(pl.LightningDataModule):
     def __init__(self, data_dir: str = "/teamspace/s3_connections/audio-speech-hebrew",
-                    train_dir: str = "YV_norm", 
+                    train_dir: str = "hebrew_speech_kan-ai", 
                      batch_size: int = BATCH_SIZE):
         super().__init__()
         self.data_dir = data_dir
@@ -35,29 +35,29 @@ class AudioDataModule(pl.LightningDataModule):
             return
 
         if stage == "fit":
-            # self.train_loader = StreamingDataLoader(SpeechStreamingDataset(input_dir=f"{self.data_dir}/train/{self.train_dir}", subsample=0.0625),
-            #                                         batch_size=self.batch_size,
-            #                                         shuffle=True, 
-            #                                         num_workers=os.cpu_count(),
-            #                                         persistent_workers=True, 
-            #                                         pin_memory=True)
-
-            self.train_loader = StreamingDataLoader(SpeechStreamingDataset(input_dir=f"/teamspace/studios/this_studio/preprocess/train/ivrit-ai"),
+            self.train_loader = StreamingDataLoader(SpeechStreamingDataset(input_dir=f"{self.data_dir}/train/{self.train_dir}", subsample=1.0),
                                                     batch_size=self.batch_size,
                                                     shuffle=True, 
                                                     num_workers=os.cpu_count(),
                                                     persistent_workers=True, 
                                                     pin_memory=True)
+
+            # self.train_loader = StreamingDataLoader(SpeechStreamingDataset(input_dir=f"/teamspace/studios/this_studio/preprocess/train/data3"),
+            #                                         batch_size=self.batch_size,
+            #                                         shuffle=True, 
+            #                                         num_workers=os.cpu_count(),
+            #                                         persistent_workers=True, 
+            #                                         pin_memory=True)
             self._already_called["fit"] = True
 
-            # self.val_loader = StreamingDataLoader(SpeechStreamingDataset(input_dir=f"{self.data_dir}/val"),
-            #                                         batch_size=self.batch_size, shuffle=False, num_workers=os.cpu_count(),
-            #                                             persistent_workers=True, pin_memory=True)
-
-
-            self.val_loader = StreamingDataLoader(SpeechStreamingDataset(input_dir=f"/teamspace/studios/this_studio/preprocess/train/ivrit-ai", subsample=0.25),
+            self.val_loader = StreamingDataLoader(SpeechStreamingDataset(input_dir=f"{self.data_dir}/train/{self.train_dir}", subsample=0.1),
                                                     batch_size=self.batch_size, shuffle=False, num_workers=os.cpu_count(),
                                                         persistent_workers=True, pin_memory=True)
+
+
+            # self.val_loader = StreamingDataLoader(SpeechStreamingDataset(input_dir=f"/teamspace/studios/this_studio/preprocess/train/data3", subsample=1.0),
+            #                                         batch_size=self.batch_size, shuffle=False, num_workers=os.cpu_count(),
+            #                                             persistent_workers=True, pin_memory=True)
 
             self._already_called["validate"] = True
             

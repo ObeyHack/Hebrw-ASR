@@ -8,7 +8,7 @@ import lightning as pl
 from dataModule import AudioDataModule, CLASSES
 from modules import bi_rnn, ctcDecoder, convolution, danse
 from modules.danse import LayerNorm, Danse
-from jiwer import wer
+from jiwer import wer, cer
 from prep.processor import get_feature_extractor, get_tokenizer, FEATURES
 
 
@@ -16,10 +16,10 @@ default_config = {
     "decoder": "greedy",
     "n_class": CLASSES,
     "n_feature": FEATURES,
-    "batch_size": 16,
-    "lr": 9e-5,
+    "batch_size": 32,
+    "lr": 1e-3,
     "n_hidden": 256,
-    "n_rnn_layers": 8,
+    "n_rnn_layers": 4,
     "dropout": 0.2,
 }
 
@@ -39,10 +39,12 @@ class HebrewASR(pl.LightningModule):
         # Evaluation metrics
         self.eval_loss = []
         self.eval_wer = []
+        self.eval_cer = []
         self.eval_predictions = []
         self.eval_targets = []
         self.test_loss = []
         self.test_wer = []
+        self.test_cer = []
         self.test_predictions = []
         self.test_targets = []
 
@@ -92,24 +94,26 @@ class HebrewASR(pl.LightningModule):
         )
 
 
-    def forward(self, x):
+    def forward(self, x, x_len):
         """
         :param x: (N, F, T) where N is the batch size, T is the number of time steps and F is the number of features
+        :param x_len: (N,) where N is the batch size
         :return:  The predicted values, shape (T, N, C) where T is TimeSteps, N is the batch size and
                 C is the number of classes.
                 In total, they are N matrices of TxC shape, one for each time step a probability distribution
                 over the classes
         """
         # (N, F, T) 
-        x = self.conv_layers(x)
+        x, lengths = self.conv_layers(x, x_len)
+
+        len_cpu = lengths.cpu().int()
 
         # (N, H, T/2) 
         for rnn in self.bi_rnns:
-            x = rnn(x)
+            x = rnn(x, len_cpu)
 
         # (N, H, T/2) 
         x = torch.transpose(x, 1, 2)
-
 
         # (N, T/2, H)
         x = self.linear_final(x)
@@ -121,7 +125,7 @@ class HebrewASR(pl.LightningModule):
         x = torch.transpose(x, 0, 1)
 
         # (T/2, N, C)
-        return x
+        return x, lengths
 
 
     def calc_loss(self, y_hat, y, y_hat_len, y_len):
@@ -135,13 +139,13 @@ class HebrewASR(pl.LightningModule):
         :param y_len: The length of the true values, shape (N,)
         :return: CTC loss.
         """
-        batch_size = y_hat.shape[1]
-        # The input length is number of acutal time steps
-        # run along batch axis
-        # input is the time steps
-        input_lengths = torch.full(size=(batch_size,), fill_value=y_hat.shape[0], dtype=torch.long)
+        # batch_size = y_hat.shape[1]
+        # # The input length is number of acutal time steps
+        # # run along batch axis
+        # # input is the time steps
+        # input_lengths = torch.full(size=(batch_size,), fill_value=y_hat.shape[0], dtype=torch.long)
 
-        return self.loss(y_hat, y, input_lengths, y_len)
+        return self.loss(y_hat, y, y_hat_len, y_len)
     
     def wer(self, y_hat_str, y_str):
         """
@@ -154,75 +158,103 @@ class HebrewASR(pl.LightningModule):
         wer_value = torch.tensor(wer_value)
         return wer_value
 
-    def decode(self, y_hat, y):
+    def cer(self, y_hat_str, y_str):
+        """
+        :param y_hat_str: (N,) strings
+        :param y_str: (N,) strings
+        :return: Character error rate
+        """
+        cer_value = cer(y_str, y_hat_str)
+        # turn the cer into a tensor
+        cer_value = torch.tensor(cer_value)
+        return cer_value
+
+    def decode(self, y_hat, y, y_hat_len, y_len):
         """
         :param y_hat: The predicted values, shape (T, N, C) where T is TimeSteps, N is the batch size and
                         C is the number of classes.
                         In total, they are N matrices of TxC shape, one for each time step a probability distribution
                         over the classes
         :param y: The true values, shape (N, S) where N is the batch size and S is the length of the word.
+        :param y_hat_len: The length of the predicted values, shape (N,)
+        :param y_len: The length of the true values, shape (N,)
         :return: decoded values - (N,) strings
         """
-        decoded_y = [self.ctc_decoder.decode(encdoing) for encdoing in y]
-        decoded_y_hat = self.ctc_decoder(y_hat)
+        decoded_y = []
+        for encdoing, length in zip(y, y_len):
+            decoding = self.ctc_decoder.decode(encdoing[:length.item()])
+            decoded_y.append(decoding)
+            
+        decoded_y_hat = self.ctc_decoder(y_hat, y_hat_len)
         return decoded_y_hat, decoded_y
 
     def training_step(self, batch, batch_idx):
         x, x_len, y, y_len = batch
-        y_hat = self(x)
+        y_hat, y_hat_len = self(x, x_len)
         # calculate the loss
-        loss = self.calc_loss(y_hat, y, x_len, y_len)
+        loss = self.calc_loss(y_hat, y, y_hat_len, y_len)
 
         # log the loss
-        self.log_dict({'train_loss': loss.item()}, on_step=True, on_epoch=True)
+        self.log_dict({'train_loss': loss}, on_step=True, on_epoch=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
         x, x_len, y, y_len = batch
-        y_hat = self(x)
-        loss = self.calc_loss(y_hat, y, x_len, y_len)
-        decoded_y_hat, decoded_y = self.decode(y_hat, y)
+        y_hat, y_hat_len = self(x, x_len)
+
+        loss = self.calc_loss(y_hat, y, y_hat_len, y_len)
+        decoded_y_hat, decoded_y = self.decode(y_hat, y, y_hat_len, y_len)
+
         wer = self.wer(decoded_y_hat, decoded_y)
+        cer = self.cer(decoded_y_hat, decoded_y)
 
         self.eval_loss.append(loss)
         self.eval_wer.append(wer)
+        self.eval_cer.append(cer)
+        
 
         self.eval_predictions.extend(decoded_y_hat)
         self.eval_targets.extend(decoded_y)
 
-        return {"val_loss": loss, "val_wer": wer}
+        # self.log_dict({'val_loss': loss,
+        #                 'val_wer': wer,
+        #                 'val_cer': cer,
+        #                 })
+
 
     def test_step(self, batch, batch_idx):
         x, x_len, y, y_len = batch
 
-        y_hat = self(x)
+        y_hat, y_hat_len = self(x, x_len)
 
-        loss = self.calc_loss(y_hat, y, x_len, y_len)
+        loss = self.calc_loss(y_hat, y, y_hat_len, y_len)
 
-        decoded_y_hat, decoded_y = self.decode(y_hat, y)
+        decoded_y_hat, decoded_y = self.decode(y_hat, y, y_hat_len, y_len)
         wer = self.wer(decoded_y_hat, decoded_y)
+        cer = self.cer(decoded_y_hat, decoded_y)
 
         self.test_loss.append(loss)
         self.test_wer.append(wer)
+        self.test_cer.append(cer)
 
         self.test_predictions.extend(decoded_y_hat)
         self.test_targets.extend(decoded_y)
 
-        self.log_dict({"test_loss": loss, "test_wer": wer}, on_step=True, on_epoch=False)
-
-        return {"test_loss": loss, "test_wer": wer}
+        self.log_dict({"test_loss": loss, "test_wer": wer, "test_cer": cer}, on_step=True, on_epoch=False)
 
     def on_validation_epoch_end(self):
         avg_loss = torch.stack(self.eval_loss).mean()
         avg_wer = torch.stack(self.eval_wer).mean()
         self.logger.experiment["training/val_avg_loss"].append(value=avg_loss, step=self.current_epoch)
         self.logger.experiment["training/val_avg_wer"].append(value=avg_wer, step=self.current_epoch)
+        self.logger.experiment["training/val_avg_cer"].append(value=torch.stack(self.eval_cer).mean(), step=self.current_epoch)
         df = pd.DataFrame({"predictions": self.eval_predictions, "targets": self.eval_targets})
         csv_buffer = StringIO()
         df.to_csv(csv_buffer, index=False)
         self.logger.experiment[f"data/val_epoch_{self.current_epoch}"].upload(File.from_stream(csv_buffer, extension="csv"))
         self.eval_loss.clear()
         self.eval_wer.clear()
+        self.eval_cer.clear()
         self.eval_predictions.clear()
         self.eval_targets.clear()
 
@@ -231,6 +263,7 @@ class HebrewASR(pl.LightningModule):
         avg_wer = torch.stack(self.test_wer).mean()
         self.logger.experiment["training/test_avg_loss"].append(value=avg_loss, step=self.current_epoch)
         self.logger.experiment["training/test_avg_wer"].append(value=avg_wer, step=self.current_epoch)
+        self.logger.experiment["training/test_avg_cer"].append(value=torch.stack(self.test_cer).mean(), step=self.current_epoch)
         df = pd.DataFrame({"predictions": self.test_predictions, "targets": self.test_targets})
         csv_buffer = StringIO()
         df.to_csv(csv_buffer, index=False)
@@ -239,9 +272,21 @@ class HebrewASR(pl.LightningModule):
         self.test_wer.clear()
         self.test_predictions.clear()
         self.test_targets.clear()
+        self.test_cer.clear()
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.lr)
+        optimizer = torch.optim.AdamW(self.parameters(), lr=5e-4)
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer, max_lr=5e-4, total_steps=self.trainer.estimated_stepping_batches,
+            anneal_strategy='linear'
+        )
+
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": scheduler
+        }
+
+
 
 
     def transcribe(self, audio_bytes):

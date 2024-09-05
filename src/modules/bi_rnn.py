@@ -23,7 +23,7 @@ class BiRNN(nn.Module):
         self.rnn = rnn_cell(
             input_size=input_size,
             hidden_size=hidden_state_dim,
-            num_layers=1,
+            num_layers=2,
             bias=True,
             batch_first=True,
             dropout=dropout,
@@ -49,13 +49,13 @@ class BiRNN(nn.Module):
         x = Tensor.transpose(x, 1, 2)
 
         # # (N, T, H)
-        # x = torch.nn.utils.rnn.pack_padded_sequence(x, lengths=input_lengths.cpu(), batch_first=True, enforce_sorted=False)
+        x = torch.nn.utils.rnn.pack_padded_sequence(x, lengths=input_lengths, batch_first=True, enforce_sorted=False)
 
         # (N, T, H)
         x, _ = self.rnn(x)
 
         # # (N, T, H)
-        # x, _ = nn.utils.rnn.pad_packed_sequence(x, total_length=total_length, batch_first=True)
+        x, _ = nn.utils.rnn.pad_packed_sequence(x, total_length=total_length, batch_first=True)
 
         # (N, T, H)
         x = Tensor.transpose(x, 1, 2)

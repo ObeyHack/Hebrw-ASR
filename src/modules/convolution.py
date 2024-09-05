@@ -1,6 +1,5 @@
 import torch.nn as nn
 
-
 class CNN(nn.Module):
     def __init__(
             self,
@@ -24,11 +23,13 @@ class CNN(nn.Module):
 
 
     
-    def forward(self, inputs):
+    def forward(self, inputs, inputs_length):
         """
         inputs: torch.FloatTensor (N, F, T)
+        inputs_length: torch.IntTensor (N)
         
         return: torch.FloatTensor (N, F * out_channels, T)
+                torch.IntTensor (N)
 
         """
         inputs = inputs.unsqueeze(1)
@@ -41,8 +42,41 @@ class CNN(nn.Module):
         
         outputs = outputs.view(N, F * channels, T)
 
-        return outputs
+        return outputs, self._get_sequence(inputs_length)
 
     
     def  get_output_dim(self):
         return (self.input_dim // 4) * self.out_channels
+
+
+    def _get_sequence_length_model(self, module: nn.Module, seq_lengths):
+        """
+        Calculate convolutional neural network receptive formula
+        Args:
+            module (torch.nn.Module): module of CNN
+            seq_lengths (torch.IntTensor): The actual length of each sequence in the batch
+        Returns: seq_lengths
+            - **seq_lengths**: Sequence length of output from the module
+        """
+        if isinstance(module, nn.Conv2d):
+            numerator = seq_lengths + 2 * module.padding[1] - module.dilation[1] * (module.kernel_size[1] - 1) - 1
+            seq_lengths = numerator.float() / float(module.stride[1])
+            seq_lengths = seq_lengths.int() + 1
+
+        elif isinstance(module, nn.MaxPool2d):
+            seq_lengths >>= 1
+
+        return seq_lengths.int()
+
+    
+    def _get_sequence(self, seq_lengths):
+        """
+        Calculate the output sequence length of the CNN
+        Args:
+            seq_lengths (torch.IntTensor): The actual length of each sequence in the batch
+        Returns: seq_lengths
+            - **seq_lengths**: Sequence length of output from the module
+        """
+        seq_lengths = self._get_sequence_length_model(self.conv1[0], seq_lengths)
+        seq_lengths = self._get_sequence_length_model(self.conv2[0], seq_lengths)
+        return seq_lengths

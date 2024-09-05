@@ -7,7 +7,7 @@ class CTCDecoder(torch.nn.Module):
   def __init__(self, tokenizer):
     super().__init__()
     self.tokenizer = tokenizer
-    self.blank = self.tokenizer.vocab_size # 0
+    self.blank = self.tokenizer.vocab_size
     self.tokens =  list(tokenizer.get_vocab().keys()) + ["-", '|'] + ["־", '`']
 
   def get_blank(self):
@@ -33,8 +33,9 @@ class CTCDecoder(torch.nn.Module):
 
 
 class GreedyCTCDecoder(CTCDecoder):
-  def forward(self, emission: torch.Tensor) -> typing.List[str]: 
-    def greedy_decode(emission: torch.Tensor) -> torch.Tensor:
+  def forward(self, emissions: torch.Tensor, lengths: torch.Tensor) -> typing.List[str]: 
+
+    def greedy_decode(emission: torch.Tensor) -> str:
       indices = torch.argmax(emission, dim=-1)
       indices = torch.unique_consecutive(indices, dim=-1)
       indices = [i for i in indices if i != self.blank]
@@ -42,8 +43,8 @@ class GreedyCTCDecoder(CTCDecoder):
       return decode
 
     decoded = []
-    for i in range(emission.shape[1]):
-      logits = emission[:, i, :]
+    for i in range(emissions.shape[1]):
+      logits = emissions[:lengths[i].item(), i, :]
       decoded.append(greedy_decode(logits))
     return decoded
 

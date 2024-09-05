@@ -3,7 +3,7 @@ from litdata import optimize
 from datasets import Dataset, Audio, load_dataset, load_from_disk
 from functools import partial
 from datasets import disable_caching
-from processor import get_tokenizer, get_feature_extractor, FEATURES
+from processor import get_tokenizer, get_feature_extractor, FEATURES, MAX_TOKENS, MAX_TIME_STEPS
 import speechpy
 import torch
 
@@ -20,11 +20,11 @@ def is_audio(audio):
 def tokenization(examples, tokenizer):
     tokenized =  tokenizer(examples["normalized_text"], 
                         padding="max_length", 
-                        truncation=True,
+                        truncation=False,
                         return_tensors="pt")
 
     examples["text_encoded"] = tokenized["input_ids"]
-    examples["text_length"] = tokenized["attention_mask"].sum(dim=1, keepdim=True)
+    examples["text_length"] = tokenized["attention_mask"].sum(dim=1, keepdim=True).int()
     return examples
 
 
@@ -35,14 +35,14 @@ def feature_extraction(example, feature_extractor):
                         sampling_rate=audio["sampling_rate"], 
                         do_normalize=True,
                         padding="max_length", 
-                        truncation=True,
+                        truncation=False,
                         return_tensors="pt",                        
                         # return_attention_mask = True,
                         return_token_timestamps = True,
                         )
 
     example["mfcc"] = mfcc["input_features"].squeeze(0)
-    example["mfcc_length"] = mfcc["num_frames"]
+    example["mfcc_length"] = mfcc["num_frames"].int()
     return example
 
 
@@ -68,6 +68,11 @@ def pre_process(dataset):
     
     # convert to torch tensors
     dataset.set_format("torch")
+
+    # filter out examples with too long text or audio
+    dataset = dataset.filter(lambda x: x["text_length"] < MAX_TOKENS and len(tokenizer.decode(x["text_encoded"], 
+                                                                                skip_special_tokens=True).strip(" ")) > 0)
+    dataset = dataset.filter(lambda x: x["mfcc_length"] < MAX_TIME_STEPS and x["mfcc_length"] > 0)
 
     for item in dataset:
         yield {"mfcc": item["mfcc"],
@@ -99,22 +104,30 @@ def main():
     # optimizer(dataset_train, output_dir_train)
 
 
-    dataset_train = load_dataset("ivrit-ai/audio-labeled",  cache_dir='datasets/train', split="train")
-    #output_dir_train = f"{output_root}/train/ivrit-ai"
-    output_dir_train = f"preprocess/train/ivrit-ai"
-    dataset_train = dataset_train.rename_column("text", "normalized_text")
-    dataset_train = dataset_train.take(100)
-    optimizer(dataset_train, output_dir_train)
+    # dataset_train = load_dataset("ivrit-ai/audio-labeled",  cache_dir='datasets/train', split="train")
+    # output_dir_train = f"{output_root}/train/ivrit-ai"
+    # # output_dir_train = f"preprocess/train/data"
+    # dataset_train = dataset_train.rename_column("text", "normalized_text")
+    # dataset_train = dataset_train.take(10000)
+    # optimizer(dataset_train, output_dir_train)
 
-    # dataset_val = load_dataset("google/fleurs", "he_il", split="validation", cache_dir='datasets/val', trust_remote_code=True)
-    # dataset_val = dataset_val.rename_column("transcription", "normalized_text")
-    # output_dir_val = f"{output_root}/val/"
-    # optimizer(dataset_val, output_dir_val)
+
+    # dataset_train = load_dataset("imvladikon/hebrew_speech_kan",  cache_dir='datasets/train', split="train")
+    # output_dir_train = f"{output_root}/train/hebrew_speech_kan-ai"
+    # # output_dir_train = f"preprocess/train/data3"
+    # # dataset_train = dataset_train.take(100)
+    # dataset_train = dataset_train.rename_column("sentence", "normalized_text")
+    # optimizer(dataset_train, output_dir_train)
+
+    dataset_val = load_dataset("google/fleurs", "he_il", split="validation", cache_dir='datasets/val', trust_remote_code=True)
+    dataset_val = dataset_val.rename_column("transcription", "normalized_text")
+    output_dir_val = f"{output_root}/val/"
+    optimizer(dataset_val, output_dir_val)
     
-    # dataset_test = load_dataset("google/fleurs", "he_il", split="test", cache_dir='datasets/test', trust_remote_code=True)
-    # dataset_test = dataset_test.rename_column("transcription", "normalized_text")
-    # output_dir_train = f"{output_root}/test/"
-    # optimizer(dataset_test, output_dir_train)
+    dataset_test = load_dataset("google/fleurs", "he_il", split="test", cache_dir='datasets/test', trust_remote_code=True)
+    dataset_test = dataset_test.rename_column("transcription", "normalized_text")
+    output_dir_train = f"{output_root}/test/"
+    optimizer(dataset_test, output_dir_train)
 
 
 main()
