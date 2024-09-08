@@ -3,24 +3,45 @@ from litdata import StreamingDataLoader, StreamingDataset
 from prep.processor import get_feature_extractor, get_tokenizer, FEATURES
 import os
 import torch
-
+import torchaudio.transforms as T
+import torch.nn as nn
+from lightning.pytorch.utilities.combined_loader import CombinedLoader
 
 CLASSES = get_tokenizer().vocab_size + 1 # 1 for epsilon, 7 for special tokens
 BATCH_SIZE = 32
 
 class SpeechStreamingDataset(StreamingDataset):
 
-        def __init__(self, *args, **kwargs):
+        def __init__(self, training=False, *args, **kwargs):
             super().__init__(*args, **kwargs)
+            self.training = training
+            self.feature_augmentation = nn.Sequential(
+                                            T.FrequencyMasking(freq_mask_param=10),
+                                            T.TimeMasking(time_mask_param=50),
+                                        )   
+
+             
 
         def __getitem__(self, index):
             result = super().__getitem__(index)
-            return result["mfcc"], result["mfcc_length"].squeeze(0), result["text_encoded"], result["text_length"].squeeze(0)
+
+            mfcc = result["mfcc"]
+            mfcc_length = result["mfcc_length"].squeeze(0)
+            text = result["text_encoded"]
+            text_length = result["text_length"].squeeze(0)
+            
+            if self.training:
+                mfcc1 = self.feature_augmentation(mfcc[:, :mfcc_length])
+                mfcc2 = mfcc[:, mfcc_length:]
+                mfcc = torch.cat([mfcc1, mfcc2], dim=1)
+
+            return mfcc, mfcc_length, text, text_length
+            # return result["mfcc"], result["mfcc_length"].squeeze(0), result["text_encoded"], result["text_length"].squeeze(0)
 
 
 class AudioDataModule(pl.LightningDataModule):
     def __init__(self, data_dir: str = "/teamspace/s3_connections/audio-speech-hebrew",
-                    train_dir: str = "hebrew_speech_kan-ai", 
+                    train_dir: str = "ivrit_small", 
                      batch_size: int = BATCH_SIZE):
         super().__init__()
         self.data_dir = data_dir
@@ -35,29 +56,30 @@ class AudioDataModule(pl.LightningDataModule):
             return
 
         if stage == "fit":
-            self.train_loader = StreamingDataLoader(SpeechStreamingDataset(input_dir=f"{self.data_dir}/train/{self.train_dir}", subsample=1.0),
-                                                    batch_size=self.batch_size,
-                                                    shuffle=True, 
+            self.train_loader = StreamingDataLoader(
+                                    SpeechStreamingDataset(
+                                        training=True, 
+                                        input_dir=f"{self.data_dir}/train/{self.train_dir}", 
+                                        subsample=1.0
+                                        ),
+                                    batch_size=self.batch_size,
+                                    shuffle=True, 
+                                    num_workers=os.cpu_count(),
+                                    persistent_workers=True, 
+                                    pin_memory=True
+                                    )
+                                
+
+            self._already_called["fit"] = True
+
+            self.val_loader = StreamingDataLoader(SpeechStreamingDataset(input_dir=f"{self.data_dir}/val", 
+                                                                        subsample=1.0),
+                                                    batch_size=self.batch_size, 
+                                                    shuffle=False, 
                                                     num_workers=os.cpu_count(),
                                                     persistent_workers=True, 
                                                     pin_memory=True)
 
-            # self.train_loader = StreamingDataLoader(SpeechStreamingDataset(input_dir=f"/teamspace/studios/this_studio/preprocess/train/data3"),
-            #                                         batch_size=self.batch_size,
-            #                                         shuffle=True, 
-            #                                         num_workers=os.cpu_count(),
-            #                                         persistent_workers=True, 
-            #                                         pin_memory=True)
-            self._already_called["fit"] = True
-
-            self.val_loader = StreamingDataLoader(SpeechStreamingDataset(input_dir=f"{self.data_dir}/train/{self.train_dir}", subsample=0.1),
-                                                    batch_size=self.batch_size, shuffle=False, num_workers=os.cpu_count(),
-                                                        persistent_workers=True, pin_memory=True)
-
-
-            # self.val_loader = StreamingDataLoader(SpeechStreamingDataset(input_dir=f"/teamspace/studios/this_studio/preprocess/train/data3", subsample=1.0),
-            #                                         batch_size=self.batch_size, shuffle=False, num_workers=os.cpu_count(),
-            #                                             persistent_workers=True, pin_memory=True)
 
             self._already_called["validate"] = True
             

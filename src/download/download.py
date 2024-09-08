@@ -13,7 +13,7 @@ studio.start(machine=Machine.DATA_PREP)
 
 t0 = time()
 studio.run("sudo apt-get install git-lfs")
-studio.run("pip install -U 'huggingface_hub[cli]'")
+studio.run("pip install -U 'huggingface_hub[cli]")
 studio.run("git config --global credential.helper store")
 studio.run(f"huggingface-cli login --token {HF_TOKEN} --add-to-git-credential")
 studio.run(f"git clone --progress https://huggingface.co/datasets/SLPRL-HUJI/HebDB")

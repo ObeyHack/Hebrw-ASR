@@ -8,7 +8,7 @@ class CTCDecoder(torch.nn.Module):
     super().__init__()
     self.tokenizer = tokenizer
     self.blank = self.tokenizer.vocab_size
-    self.tokens =  list(tokenizer.get_vocab().keys()) + ["-", '|'] + ["־", '`']
+    self.tokens =  list(tokenizer.get_vocab().keys()) + ["-", '|'] + ["־", '`', "'"] + [f"{i}" for i in range(10)]
 
   def get_blank(self):
     return self.blank
@@ -57,30 +57,29 @@ class BeamCTCDecoder(CTCDecoder):
     LM_WEIGHT = 3.23
     WORD_SCORE = -0.26
     self.beam_search_decoder = ctc_decoder(
-      lexicon=None,
+      lexicon="model.lexicon",
       tokens=self.tokens,
       lm="model.bin.lm",
       nbest=1,
-      beam_size=5,
+      beam_size=15,
       lm_weight=LM_WEIGHT,
       word_score=WORD_SCORE,)
 
 
-  def forward(self, emission: torch.Tensor) -> typing.List[str]:
-    emission = torch.transpose(emission, 0, 1)
-    lengths = self.input_lengths(emission)
-    beam_search_result = self.beam_search_decoder(emission.contiguous().cpu(), lengths.cpu())
-
+  def forward(self, emissions: torch.Tensor, lengths: torch.Tensor) -> typing.List[str]:
+    emissions = torch.transpose(emissions, 0, 1)
+    #beam_search_result = self.beam_search_decoder(emissions.contiguous().cpu(), lengths.cpu())
+    beam_search_result = self.beam_search_decoder(emissions.cpu(), lengths.cpu())
     beam_search_transcripts = []
 
-    for result in beam_search_result:
-      tokens_str = "".join(self.beam_search_decoder.idxs_to_tokens(result[0].tokens))
-      transcript = " ".join(tokens_str.split("|"))
-      beam_search_transcripts.append(transcript)
+    # for result in beam_search_result:
+    #   tokens_str = "".join(self.beam_search_decoder.idxs_to_tokens(result[0].tokens))
+    #   transcript = " ".join(tokens_str.split("|"))
+    #   beam_search_transcripts.append(transcript)
 
-    # beam_search_transcripts = [
-    #   " ".join(result[0].words).strip() for result in beam_search_result
-    # ]
+    beam_search_transcripts = [
+      " ".join(result[0].words).strip() for result in beam_search_result
+    ]
 
     return beam_search_transcripts
 

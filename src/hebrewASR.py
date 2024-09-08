@@ -195,7 +195,7 @@ class HebrewASR(pl.LightningModule):
         loss = self.calc_loss(y_hat, y, y_hat_len, y_len)
 
         # log the loss
-        self.log_dict({'train_loss': loss}, on_step=True, on_epoch=True)
+        self.log_dict({'train_loss': loss}, on_step=True, on_epoch=True, sync_dist=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -240,7 +240,7 @@ class HebrewASR(pl.LightningModule):
         self.test_predictions.extend(decoded_y_hat)
         self.test_targets.extend(decoded_y)
 
-        self.log_dict({"test_loss": loss, "test_wer": wer, "test_cer": cer}, on_step=True, on_epoch=False)
+        self.log_dict({"test_loss": loss, "test_wer": wer, "test_cer": cer}, on_step=True, on_epoch=False, sync_dist=True)
 
     def on_validation_epoch_end(self):
         avg_loss = torch.stack(self.eval_loss).mean()
@@ -296,10 +296,21 @@ class HebrewASR(pl.LightningModule):
         """
         feature_extractor = get_feature_extractor()
         tokenizer = get_tokenizer()
-        x = feature_extractor(audio_bytes, sampling_rate=16000).input_features[0].T
-        x = torch.tensor(x).unsqueeze(0)
-        y_hat = self(x)
-        decoded_y_hat = self.ctc_decoder(y_hat)
+        mfcc = feature_extractor(audio_bytes, 
+                        sampling_rate=16000, 
+                        do_normalize=True,
+                        padding="max_length", 
+                        truncation=False,
+                        return_tensors="pt",                        
+                        # return_attention_mask = True,
+                        return_token_timestamps = True,
+                        )
+
+        x = mfcc["input_features"].cuda()
+        x_len = mfcc["num_frames"].int().cuda()
+
+        y_hat, y_hat_len = self(x, x_len)
+        decoded_y_hat = self.ctc_decoder(y_hat, y_hat_len)
         decoded_y_hat = decoded_y_hat[0]
         return decoded_y_hat
 
@@ -328,6 +339,7 @@ def train_func(config=None, logger=None, logger_config=None, dm=None, checkpoint
         logger=logger,
         max_epochs=num_epochs,
         gradient_clip_val=0.5,
+        # strategy='ddp_find_unused_parameters_true',
     )
     trainer.fit(model, datamodule=dm, ckpt_path=checkpoints)
 
@@ -352,11 +364,14 @@ def test_func(config=None, logger=None, logger_config=None, checkpoints=None):
     # log the hyperparameters and not the api key and project name
     logger.run["parameters"] = config
 
+    pl.seed_everything(42, workers=True)
+
     trainer = pl.Trainer(
         devices="auto",
         accelerator="auto",
         logger=logger,
         log_every_n_steps=1,
+        deterministic=True,
     )
     trainer.test(model, datamodule=dm, ckpt_path=checkpoints)
 
@@ -379,8 +394,9 @@ def main():
         "log_model_checkpoints": False
     }
 
-    neptune_logger = NeptuneLogger(project=PROJECT_NAME, api_key=API_TOKEN, log_model_checkpoints=False)
-    train_func(logger=neptune_logger)
+    checkpoints = "/teamspace/studios/this_studio/.neptune/epoch=190-step=25212.ckpt"
+    neptune_logger = NeptuneLogger(project=PROJECT_NAME, api_key=API_TOKEN, log_model_checkpoints=True, tags=["tune", "ivrit+kenlm"])
+    trainer = train_func(config=default_config, logger=neptune_logger, num_epochs=250, checkpoints=checkpoints)
 
 
 if __name__ == '__main__':

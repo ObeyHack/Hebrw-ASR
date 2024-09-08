@@ -1,11 +1,14 @@
 import os
 from litdata import optimize
-from datasets import Dataset, Audio, load_dataset, load_from_disk
+from datasets import Dataset, Audio, load_dataset, load_from_disk, concatenate_datasets 
 from functools import partial
 from datasets import disable_caching
 from processor import get_tokenizer, get_feature_extractor, FEATURES, MAX_TOKENS, MAX_TIME_STEPS
 import speechpy
 import torch
+
+HF_TOKEN = os.environ.get("HF_TOKEN")
+
 
 def is_text(text):
     # Filter out examples without text (text is empty or None)
@@ -99,35 +102,41 @@ def optimizer(dataset, output_dir):
 def main():
     output_root = "/teamspace/s3_connections/audio-speech-hebrew"
 
-    # dataset_train = load_dataset("SLPRL-HUJI/HebDB", "YV_pre", cache_dir='datasets/train', split="train")
-    # output_dir_train = f"{output_root}/train/YV_norm"
-    # optimizer(dataset_train, output_dir_train)
+    # dataset_train1 = load_dataset("SLPRL-HUJI/HebDB", "YV_pre", cache_dir='datasets/train', split="train")
+    # # keep only the normalized text and audio columns
+    # dataset_train1 = dataset_train1.select_columns(["normalized_text", "audio"])
+    # dataset_train1 = dataset_train1.take(10000)
+    # dataset_train1 = dataset_train1.cast_column("audio", Audio(sampling_rate=16000))
 
+    dataset_train2 = load_dataset("ivrit-ai/whisper-training",  cache_dir='datasets/train2', split="test")
+    dataset_train2 = dataset_train2.rename_column("text", "normalized_text")
+    dataset_train2 = dataset_train2.select_columns(["normalized_text", "audio"])
+    dataset_train2 = dataset_train2.cast_column("audio", Audio(sampling_rate=16000))
 
-    # dataset_train = load_dataset("ivrit-ai/audio-labeled",  cache_dir='datasets/train', split="train")
-    # output_dir_train = f"{output_root}/train/ivrit-ai"
-    # # output_dir_train = f"preprocess/train/data"
-    # dataset_train = dataset_train.rename_column("text", "normalized_text")
-    # dataset_train = dataset_train.take(10000)
-    # optimizer(dataset_train, output_dir_train)
+    # dataset_train3 = load_dataset("imvladikon/hebrew_speech_kan",  cache_dir='datasets/train3', split="train+validation")
+    # dataset_train3 = dataset_train3.rename_column("sentence", "normalized_text")
+    # dataset_train3 = dataset_train3.select_columns(["normalized_text", "audio"])
 
+    # print len of dataset
+    print(len(dataset_train2))
 
-    # dataset_train = load_dataset("imvladikon/hebrew_speech_kan",  cache_dir='datasets/train', split="train")
-    # output_dir_train = f"{output_root}/train/hebrew_speech_kan-ai"
-    # # output_dir_train = f"preprocess/train/data3"
-    # # dataset_train = dataset_train.take(100)
-    # dataset_train = dataset_train.rename_column("sentence", "normalized_text")
-    # optimizer(dataset_train, output_dir_train)
+    # dataset_train3 = dataset_train3.cast_column("audio", Audio(sampling_rate=16000))
 
-    dataset_val = load_dataset("google/fleurs", "he_il", split="validation", cache_dir='datasets/val', trust_remote_code=True)
-    dataset_val = dataset_val.rename_column("transcription", "normalized_text")
-    output_dir_val = f"{output_root}/val/"
-    optimizer(dataset_val, output_dir_val)
+    # dataset_train = concatenate_datasets([dataset_train1, dataset_train2, dataset_train3])
+    # dataset_train = dataset_train.shuffle(seed=42)
+    output_dir_train = f"{output_root}/train/ivrit_small"
+    optimizer(dataset_train2, output_dir_train)
+
     
-    dataset_test = load_dataset("google/fleurs", "he_il", split="test", cache_dir='datasets/test', trust_remote_code=True)
-    dataset_test = dataset_test.rename_column("transcription", "normalized_text")
-    output_dir_train = f"{output_root}/test/"
-    optimizer(dataset_test, output_dir_train)
+    # dataset_val = load_dataset("google/fleurs", "he_il", split="validation", cache_dir='datasets/val', trust_remote_code=True)
+    # dataset_val = dataset_val.rename_column("transcription", "normalized_text")
+    # output_dir_val = f"{output_root}/val/"
+    # optimizer(dataset_val, output_dir_val)
+    
+    # dataset_test = load_dataset("google/fleurs", "he_il", split="test", cache_dir='datasets/test', trust_remote_code=True)
+    # dataset_test = dataset_test.rename_column("transcription", "normalized_text")
+    # output_dir_train = f"{output_root}/test/"
+    # optimizer(dataset_test, output_dir_train)
 
 
 main()
