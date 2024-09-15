@@ -55,15 +55,18 @@ class BeamCTCDecoder(CTCDecoder):
   def __init__(self, tokenizer):
     super().__init__(tokenizer)
     LM_WEIGHT = 3.23
+    LM_WEIGHT = 1.5
     WORD_SCORE = -0.26
     self.beam_search_decoder = ctc_decoder(
+      # lexicon=None,
       lexicon="model.lexicon",
       tokens=self.tokens,
       lm="model.bin.lm",
       nbest=1,
-      beam_size=15,
+      beam_size=32,
       lm_weight=LM_WEIGHT,
-      word_score=WORD_SCORE,)
+      # word_score=WORD_SCORE,
+      )
 
 
   def forward(self, emissions: torch.Tensor, lengths: torch.Tensor) -> typing.List[str]:

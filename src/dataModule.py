@@ -41,7 +41,7 @@ class SpeechStreamingDataset(StreamingDataset):
 
 class AudioDataModule(pl.LightningDataModule):
     def __init__(self, data_dir: str = "/teamspace/s3_connections/audio-speech-hebrew",
-                    train_dir: str = "ivrit_small", 
+                    train_dir: str = "kan_extand", 
                      batch_size: int = BATCH_SIZE):
         super().__init__()
         self.data_dir = data_dir
@@ -91,7 +91,7 @@ class AudioDataModule(pl.LightningDataModule):
             self._already_called["validate"] = True
 
         if stage == "test":
-            self.test_loader = StreamingDataLoader(SpeechStreamingDataset(input_dir=f"{self.data_dir}/test"),
+            self.test_loader = StreamingDataLoader(SpeechStreamingDataset(input_dir=f"{self.data_dir}/val"),
                                                     batch_size=self.batch_size, shuffle=False, num_workers=os.cpu_count(),
                                                     persistent_workers=True, pin_memory=True)
             self._already_called["test"] = True

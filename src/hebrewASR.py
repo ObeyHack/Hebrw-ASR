@@ -10,6 +10,7 @@ from modules import bi_rnn, ctcDecoder, convolution, danse
 from modules.danse import LayerNorm, Danse
 from jiwer import wer, cer
 from prep.processor import get_feature_extractor, get_tokenizer, FEATURES
+from model.quartznet import QuartzNet
 
 
 default_config = {
@@ -94,6 +95,8 @@ class HebrewASR(pl.LightningModule):
         )
 
 
+
+
     def forward(self, x, x_len):
         """
         :param x: (N, F, T) where N is the batch size, T is the number of time steps and F is the number of features
@@ -103,6 +106,8 @@ class HebrewASR(pl.LightningModule):
                 In total, they are N matrices of TxC shape, one for each time step a probability distribution
                 over the classes
         """
+
+
         # (N, F, T) 
         x, lengths = self.conv_layers(x, x_len)
 
@@ -364,14 +369,13 @@ def test_func(config=None, logger=None, logger_config=None, checkpoints=None):
     # log the hyperparameters and not the api key and project name
     logger.run["parameters"] = config
 
-    pl.seed_everything(42, workers=True)
+    # pl.seed_everything(42, workers=True)
 
     trainer = pl.Trainer(
         devices="auto",
         accelerator="auto",
         logger=logger,
         log_every_n_steps=1,
-        deterministic=True,
     )
     trainer.test(model, datamodule=dm, ckpt_path=checkpoints)
 
@@ -394,9 +398,10 @@ def main():
         "log_model_checkpoints": False
     }
 
-    checkpoints = "/teamspace/studios/this_studio/.neptune/epoch=190-step=25212.ckpt"
-    neptune_logger = NeptuneLogger(project=PROJECT_NAME, api_key=API_TOKEN, log_model_checkpoints=True, tags=["tune", "ivrit+kenlm"])
-    trainer = train_func(config=default_config, logger=neptune_logger, num_epochs=250, checkpoints=checkpoints)
+
+    checkpoints = "/teamspace/studios/this_studio/final.ckpt"
+    neptune_logger = NeptuneLogger(project=PROJECT_NAME, api_key=API_TOKEN, log_model_checkpoints=True, tags=["QuartzNet", "ASR", "Hebrew"])
+    trainer = train_func(config=default_config, logger=neptune_logger, num_epochs=100, checkpoints=checkpoints)
 
 
 if __name__ == '__main__':

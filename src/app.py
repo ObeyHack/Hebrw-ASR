@@ -19,7 +19,7 @@ def init_model():
     config["batch_size"] = 1
     config["decoder"] = "beam"
 
-    ckpy_path = "/teamspace/studios/this_studio/.neptune/AUD1-501/AUD1-501/checkpoints/epoch=400-step=100250.ckpt"
+    ckpy_path = "/teamspace/studios/this_studio/.neptune/epoch=341-step=84474.ckpt"
     model = HebrewASR.load_from_checkpoint(ckpy_path,
                                             config=config) 
     model.eval()

@@ -108,10 +108,11 @@ def main():
     # dataset_train1 = dataset_train1.take(10000)
     # dataset_train1 = dataset_train1.cast_column("audio", Audio(sampling_rate=16000))
 
-    dataset_train2 = load_dataset("ivrit-ai/whisper-training",  cache_dir='datasets/train2', split="test")
+    dataset_train2 = load_dataset("ivrit-ai/whisper-training",  cache_dir='datasets/train2', split="train")
     dataset_train2 = dataset_train2.rename_column("text", "normalized_text")
     dataset_train2 = dataset_train2.select_columns(["normalized_text", "audio"])
     dataset_train2 = dataset_train2.cast_column("audio", Audio(sampling_rate=16000))
+    dataset_train2 = dataset_train2.take(16000)
 
     # dataset_train3 = load_dataset("imvladikon/hebrew_speech_kan",  cache_dir='datasets/train3', split="train+validation")
     # dataset_train3 = dataset_train3.rename_column("sentence", "normalized_text")
@@ -124,7 +125,7 @@ def main():
 
     # dataset_train = concatenate_datasets([dataset_train1, dataset_train2, dataset_train3])
     # dataset_train = dataset_train.shuffle(seed=42)
-    output_dir_train = f"{output_root}/train/ivrit_small"
+    output_dir_train = f"{output_root}/train/ivrit_big"
     optimizer(dataset_train2, output_dir_train)
 
     
