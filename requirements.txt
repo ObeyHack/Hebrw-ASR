@@ -13,7 +13,13 @@ transformers
 lightning-sdk
 litdata
 Dataset
---extra-index-url https://download.pytorch.org/whl/cu121
-torch
-torchvision
-torchaudio
+streamlit
+speechpy
+lightning_cloud
+hebrew
+streamlit-audiorec
+git+https://github.com/dariush-bahrami/character-tokenizer.git
+#--extra-index-url https://download.pytorch.org/whl/cu121
+#torch
+#torchvision
+#torchaudio

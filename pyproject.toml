@@ -1,0 +1,43 @@
+
+[project]
+name = "hebrewASR"
+version = "0.1.0"
+description = "Hebrew Automatic Speech Recognition"
+authors =  [
+  {name = "Sean Cherny"},
+  {name = "Michael Merzin"},
+]
+license = {text = "MIT License"}
+readme = "README.md"
+requires-python = ">= 3.10"
+dependencies = [
+  "numpy==1.26.3",
+  "tqdm",
+  "matplotlib",
+    "librosa",
+    "lightning",
+    "Jupyter",
+    "neptune",
+    "wandb",
+    "python-dotenv",
+    "datasets",
+    "jiwer",
+    "transformers",
+    "lightning-sdk",
+    "litdata",
+    "Dataset",
+    "streamlit",
+    "speechpy",
+    "lightning_cloud",
+    "hebrew",
+    "streamlit-audiorec",
+    "character-tokenizer@git+https://github.com/dariush-bahrami/character-tokenizer.git"
+]
+
+[project.scripts]
+app = "hebrewASR.runner:main"
+
+
+[build-system]
+build-backend = "flit_core.buildapi"
+requires = ["flit_core >=3.2,<4"]
