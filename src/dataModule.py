@@ -91,7 +91,7 @@ class AudioDataModule(pl.LightningDataModule):
             self._already_called["validate"] = True
 
         if stage == "test":
-            self.test_loader = StreamingDataLoader(SpeechStreamingDataset(input_dir=f"{self.data_dir}/val"),
+            self.test_loader = StreamingDataLoader(SpeechStreamingDataset(input_dir=f"{self.data_dir}/test"),
                                                     batch_size=self.batch_size, shuffle=False, num_workers=os.cpu_count(),
                                                     persistent_workers=True, pin_memory=True)
             self._already_called["test"] = True

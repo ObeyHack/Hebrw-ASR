@@ -17,9 +17,9 @@ def init_model():
 
     config = default_config
     config["batch_size"] = 1
-    config["decoder"] = "beam"
+    config["decoder"] = "greedy"
 
-    ckpy_path = "/teamspace/studios/this_studio/.neptune/epoch=341-step=84474.ckpt"
+    ckpy_path = "/teamspace/studios/this_studio/final.ckpt"
     model = HebrewASR.load_from_checkpoint(ckpy_path,
                                             config=config) 
     model.eval()

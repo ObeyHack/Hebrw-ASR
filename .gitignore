@@ -8,4 +8,5 @@
 /src/.neptune/
 /src/wandb/
 /src/datasets/
+/src/uploads/*.mp3
 .env
