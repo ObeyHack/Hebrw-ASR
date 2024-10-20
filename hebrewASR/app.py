@@ -19,7 +19,7 @@ def init_model():
     config["batch_size"] = 1
     config["decoder"] = "greedy"
 
-    ckpy_path = "/hebrewASR/process_data/ckpt/final.ckpt"
+    ckpy_path = "hebrewASR/process_data/ckpt/final.ckpt"
     model = HebrewASR.load_from_checkpoint(ckpy_path,
                                             config=config) 
     model.eval()

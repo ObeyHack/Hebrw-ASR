@@ -18,6 +18,8 @@ speechpy
 lightning_cloud
 hebrew
 streamlit-audiorec
+flashlight-text
+git+https://github.com/kpu/kenlm.git
 git+https://github.com/dariush-bahrami/character-tokenizer.git
 #--extra-index-url https://download.pytorch.org/whl/cu121
 #torch

@@ -31,6 +31,8 @@ dependencies = [
     "lightning_cloud",
     "hebrew",
     "streamlit-audiorec",
+    "flashlight-text",
+    "kenlm@git+https://github.com/kpu/kenlm.git",
     "character-tokenizer@git+https://github.com/dariush-bahrami/character-tokenizer.git"
 ]
 
