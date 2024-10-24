@@ -4,9 +4,9 @@
 /.ipynb_checkpoints/
 .DS_Store
 *.pyc
-/src/lightning_logs/
-/src/.neptune/
-/src/wandb/
-/src/datasets/
-/src/uploads/*.mp3
+/hebrewASR/lightning_logs/
+/hebrewASR/.neptune/
+/hebrewASR/wandb/
+/hebrewASR/datasets/
+/hebrewASR/uploads/*.mp3
 .env
