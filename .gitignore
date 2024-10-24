@@ -8,10 +8,7 @@
 /hebrewASR/.neptune/
 /hebrewASR/wandb/
 /hebrewASR/datasets/
-/hebrewASR/uploads/*.mp3
 .env
-*.ckpt
-
 *.mp3
-
+/hebrewASR/uploads/*.mp3
 hebrewASR/uploads/
