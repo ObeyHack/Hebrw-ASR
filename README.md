@@ -2,6 +2,7 @@
 
 This project is Speech-Recognition project using Neural Networks. 
 The architecture used is similar to the DeepSpeech2 model as described in the paper [Deep Speech 2](https://arxiv.org/abs/1512.02595).
+
 ---
 # Usage
 
