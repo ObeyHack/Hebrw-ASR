@@ -1,4 +1,4 @@
 # Auto detect text files and perform LF normalization
 * text=auto
-*.ckpt filter=lfs diff=lfs merge=lfs -text
-*.lm filter=lfs diff=lfs merge=lfs -text
+hebrewASR/process_data/ckpt/final.ckpt filter=lfs diff=lfs merge=lfs -text
+hebrewASR/process_data/model.bin.lm filter=lfs diff=lfs merge=lfs -text
