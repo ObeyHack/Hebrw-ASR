@@ -10,3 +10,4 @@
 /hebrewASR/datasets/
 /hebrewASR/uploads/*.mp3
 .env
+*.ckpt
